@@ -1,97 +1,204 @@
-import { collection, doc, getDocs, query, where } from "firebase/firestore"
-import { db } from "../firebase"
-import { useEffect, useState } from "react";
+import { collection, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore"
+import { auth, db } from "../firebase"
+import { useContext, useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { getHelperById, statusStyle } from "./History";
+import { faSortNumericUpAlt } from "@fortawesome/free-solid-svg-icons";
+import { context } from "../App";
 
-export default function Home() {
-
-    const [client, setClient] = useState('client1');
+export default function Home({userData}) {
+    const [loggedInUser, setLoggedInUser] = useContext(context)
+    const [helpers, setHelpers] = useState({});
+    // const [client, setClient] = useState('client1');
     const [data, setData] = useState([]);
+    const [clientData, setClientData] = useState({balance:0});
+
+    const navigate = useNavigate()
 
     const fetchJobs2 = async() => {
-        let clientRef = getClientRef(client)
+        let clientRef = getClientRef(loggedInUser)
+        const excludedStatus = ["done", "finished", "canceled"];
+
+
         const querySnapshot = await getDocs(query(collection(db, "jobs"), 
         where("postedBy", "==", clientRef),
-        // where("status", "!=", "done")
+        where("status", "not-in", excludedStatus)
 
         ));
         const newData = querySnapshot.docs.map((doc) => ({...doc.data(), id: doc.id }));
-        console.log(newData);
+        // console.log(newData);
         setData(newData);
     }
+    
+
+    const fetchHelperData = async (job) => {
+        if (job.helper && !helpers[job.id]) {
+            try {
+                const helperName = await getHelperById(job.helper);
+                setHelpers(prevHelpers => ({
+                    ...prevHelpers,
+                    [job.id]: helperName,
+                }));
+            } catch (error) {
+                console.error('Error fetching helper details:', error);
+            }
+        }
+    };
+
 
 
     useEffect(()=>{
         fetchJobs2();
+        getClientById(loggedInUser)
     }, [])
+    // console.log(userData);
 
+    useEffect(() => {
+        data.forEach(job => {
+            fetchHelperData(job);
+        });
+    }, [data]);
+
+    useEffect(() => {
+        document.title = "Titipin - Home";
+        if (loggedInUser === "") {
+            navigate('/login');
+        }
+    }, [loggedInUser, navigate]);
 
     const getClientRef = (clientId) => {
         const clubSnapshot = doc(db, 'clients', clientId)
-        // console.log(clubSnapshot);
+        console.log(clubSnapshot);
         return clubSnapshot
     }
 
+    const getClientById = async (clientId) => {
+        const clientSnapshot = doc(db, 'clients', clientId)
+        try {
+            const clientData = await getDoc(clientSnapshot);
+            console.log(clientData.data());
+            setClientData(clientData.data())
+            // return ;clientSnapshot.data()
+        } catch (error) {
+            console.error('Error fetching helper details:', error);
+            return null;
+        }
+    };
+
+    const increaseBalance = async (clientId) => {
+        try {
+          const clientRef = doc(db, 'clients', clientId)
+      
+          // Get the current balance from Firestore
+          const clientDoc = await getDoc(clientRef)
+          const currentBalance = clientDoc.data().balance;
+      
+          // Update the balance by adding 10000
+          await updateDoc(clientRef, {
+            balance: currentBalance + 10000,
+          });
+      
+          console.log('Balance updated successfully!');
+        } catch (error) {
+          console.error('Error updating balance:', error);
+        }
+      };
+      
+      const handleSignOut = () => {
+        auth.signOut()
+          .then(() => {
+            // Sign-out berhasil.
+            localStorage.removeItem('loggedIn');
+            setLoggedInUser(""); // Setelah sign-out berhasil, set state loggedInUser menjadi kosong
+            console.log('Sign-out berhasil');
+            // navigate('/login');
+            navigate("/")
+            // Redirect ke halaman sign-in atau halaman lain jika diperlukan
+          })
+          .catch((error) => {
+            // Terjadi error saat sign-out.
+            console.error('Error pada proses sign-out:', error);
+          });
+      };
+
+    if(clientData !== undefined && userData !== null)
+
     return(
-        <div className="flex flex-col items-center bg-white min-w-screen min-h-screen p-4 gap-5">
+        <div className="flex flex-col items-center bg-white min-w-screen mb-12 pb-8 p-4 gap-5 ">
 
 
-                <div className = "flex w-full h-full flex-col p-6">
+                <div className = "flex w-full h-full flex-col ">
                     <div className = "flex flex-row w-full mb-4 px-4">
-                        <p className = "text-xl mr-1.5 text-neutral-600">Welcome</p>
-                        <p className = "text-xl text-blue-800">Name</p>
+                        <p className = "text-lg font-medium mr-1.5 text-neutral-600">Welcome</p>
+                        <p  onClick={handleSignOut} className = "text-lg font-medium text-sky-600">{userData.name}</p>
                     </div>
-                    <div className = "flex flex-col items-start justify-center w-full h-28 bg-blue-800 rounded-md p-4 text-white">
-                        <p className = "text-lg">Your Balance</p>
-                        {/* <p className = "text-2xl font-bold">Rp {userData.balance.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')}</p> */}
-                        <p className = "text-2xl font-bold">Rp 20000</p>
-                    </div>
-                    <div className = "w-full flex flex-row justify-start mt-6 space-x-6">
-                        <div className = "flex flex-col items-center justify-center space-y-2">
-                            <div className = "bg-blue-200 rounded-full p-3">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#1E40AF" className="w-7 h-7">
-                                    <path d="M12 7.5a2.25 2.25 0 100 4.5 2.25 2.25 0 000-4.5z" />
-                                    <path fillRule="evenodd" d="M1.5 4.875C1.5 3.839 2.34 3 3.375 3h17.25c1.035 0 1.875.84 1.875 1.875v9.75c0 1.036-.84 1.875-1.875 1.875H3.375A1.875 1.875 0 011.5 14.625v-9.75zM8.25 9.75a3.75 3.75 0 117.5 0 3.75 3.75 0 01-7.5 0zM18.75 9a.75.75 0 00-.75.75v.008c0 .414.336.75.75.75h.008a.75.75 0 00.75-.75V9.75a.75.75 0 00-.75-.75h-.008zM4.5 9.75A.75.75 0 015.25 9h.008a.75.75 0 01.75.75v.008a.75.75 0 01-.75.75H5.25a.75.75 0 01-.75-.75V9.75z" clipRule="evenodd" />
-                                    <path d="M2.25 18a.75.75 0 000 1.5c5.4 0 10.63.722 15.6 2.075 1.19.324 2.4-.558 2.4-1.82V18.75a.75.75 0 00-.75-.75H2.25z" />
-                                </svg>
-                            </div>
-                            <p className="text-sm">Withdraw</p>
+                    <div className = "flex items-center justify-between px-4 w-full h-24 bg-sky-500 rounded-md  text-white">
+                        <div className="">
+                            <p className = "text-lg">Your Balance</p>
+                            {/* <p className = "text-2xl font-bold">Rp {userData.balance.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')}</p> */}
+                            <p  className = "text-xl font-bold">Rp {userData.balance.toString()}</p>
                         </div>
-                        <div className = "flex flex-col items-center justify-center space-y-2">
-                            <div className = "bg-blue-200 rounded-full p-3">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#1E40AF" className="w-7 h-7">
-                                    <path fillRule="evenodd" d="M6.97 2.47a.75.75 0 011.06 0l4.5 4.5a.75.75 0 01-1.06 1.06L8.25 4.81V16.5a.75.75 0 01-1.5 0V4.81L3.53 8.03a.75.75 0 01-1.06-1.06l4.5-4.5zm9.53 4.28a.75.75 0 01.75.75v11.69l3.22-3.22a.75.75 0 111.06 1.06l-4.5 4.5a.75.75 0 01-1.06 0l-4.5-4.5a.75.75 0 111.06-1.06l3.22 3.22V7.5a.75.75 0 01.75-.75z" clipRule="evenodd" />
-                                </svg>
-                            </div>
-                            <p className="text-sm">Transfer</p>
-                        </div>
+
+                      <div className="flex flex-col items-center" onClick={() =>increaseBalance(loggedInUser)}>
+                        <div className = "bg-sky-200 rounded-full p-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"  strokeWidth="1" stroke="blue" fill="blue" class="w-4 h-4">
+                                <path fill-rule="evenodd" d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5h-6.75v6.75a.75.75 0 01-1.5 0v-6.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z" clip-rule="evenodd" />
+                            </svg>
+                        </div>                        
+                        <p className="text-xs">TopUp</p>
+                      </div>
                     </div>
+                   
                 </div>
 
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 w-full">
 
-            <p className = "text-xl font-bold text-neutral-600">Your Jobs</p>
+            <p className = "text-xl font-bold text-neutral-600 ">Your Current Jobs</p>
            
             {
-                
-                data.map(job =>{
-                    console.log(job);
+                data.length >0 ?
+                data.map(job =>{ 
+                    console.log(job.id);
                     return(
-                        
-                        <div className="flex gap-2 rounded-md shadow-md border-2 w-full p-3">
-                            <div className="flex flex-col gap-1 w-3/4">
-                                <p className="text-lg font-semibold text-neutral-600">{job.title}</p>
-                                <p className="text-neutral-600">{job.description}</p>
-                                <p className="text-neutral-600">Helper : helper</p>
-                        
-                            </div>
-                            <div className="flex flex-col items-center justify-around">
-                                <p>Rp.{job.price}</p>
-                                <p className="bg-red-200 border-solid border-red-400 border-2 w-fit py-1 px-3 rounded-full">{job.status}</p>
-                            </div>
+
+                        <div className="flex gap-2 rounded-md shadow-md border-2 w-full h-full p-3">
+                            <Link to={`/job/${job.id}`} className="flex w-full">
+                                <div className="flex flex-col items-start gap-1 w-3/4">
+                                    <p className="text-lg font-semibold">{job.title}</p>
+                                    <p>{job.description}</p>
+                                    {
+                                        job.helper !== null ?
+                                        <p>Helper : {helpers[job.id] || '-'}</p>
+                                        :
+                                        <p>Helper : -</p>
+
+                                    }
+                            
+                                </div>
+                                <div className="flex flex-col items-center justify-around">
+                                    <p>Rp.{job.price}</p>
+                                    
+                                    <p className= {statusStyle(job.status)}
+                                    >
+                                        {job.status}
+                                    </p>
+                                    
+                                </div>
                     
+                            </Link>
                         </div>
                         )
                 })
+
+                :
+
+                (
+                    <div>
+                        You have no ongoing job
+                    </div>
+                )
+                
+                
             }
             </div>
 
